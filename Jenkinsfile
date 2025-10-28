@@ -1,38 +1,23 @@
 pipeline {
     agent any
-
     environment {
-        IMAGE_NAME = "devsecops-lab-web"
+        // Set up Python and Docker
+        PYTHON_IMAGE = 'python:3.9-slim'
+        IMAGE_NAME = 'python-devsecops-jenkins_app'
     }
+    stage('Checkout') {
+    steps {
+        // Pull the code from GitHub (branch main explicitly)
+        git branch: 'main', url: 'https://github.com/Shakcode1/devsecops-lab.git'
+    }
+}
 
-    stages {
-        stage('Clone Repository') {
-            steps {
-                git 'https://github.com/Shakcode1/devsecops-lab.git'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    sh 'docker build -t ${IMAGE_NAME}:latest ./app'
-                }
-            }
-        }
-
-        stage('Run Bandit Scan') {
+        stage('Install Dependencies') {
             steps {
                 script {
-                    sh 'bandit -r app/ || true'
-                }
-            }
-        }
-
-        stage('Run Trivy Scan') {
-            steps {
-                script {
-                    // Ignorer l'erreur pour ne pas bloquer le pipeline
-                    sh 'trivy image --exit-code 0 ${IMAGE_NAME}:latest || true'
+                    // Install Python dependencies
+                    sh 'python3 -m venv venv'
+                    sh 'source ./venv/bin/activate && pip install -r requirements.txt'
                 }
             }
         }
@@ -40,33 +25,64 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    sh 'pytest app/tests/test_app.py || true'
+                    // Run the tests with pytest
+                    sh 'source ./venv/bin/activate && pytest'
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Static Code Analysis (Bandit)') {
             steps {
-                echo 'Deploying Docker container...'
                 script {
-                    // Arrêter le conteneur précédent si existant
-                    sh 'docker rm -f ${IMAGE_NAME} || true'
-                    // Lancer un nouveau conteneur
-                    sh 'docker run -d --name ${IMAGE_NAME} -p 5000:5000 ${IMAGE_NAME}:latest'
+                    // Run Bandit for static code analysis
+                    sh 'source ./venv/bin/activate && bandit -r . || true'
+                }
+            }
+        }
+
+        stage('Container Vulnerability Scan (Trivy)') {
+            steps {
+                script {
+                    // Build the Docker image
+                    sh 'docker-compose build'
+                    // Scan the image with Trivy
+                    sh 'trivy image ${IMAGE_NAME}:latest || true'
+                }
+            }
+        }
+
+        stage('Check Dependency Vulnerabilities (Safety)') {
+            steps {
+                script {
+                    // Run Safety to check dependencies
+                    sh 'source ./venv/bin/activate && safety check || true'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build Docker image (already done for Trivy, but we keep cette étape)
+                    sh 'docker-compose build'
+                }
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                script {
+                    // Deploy the application using Docker Compose
+                    sh 'docker-compose down || true'
+                    sh 'docker-compose up -d'
                 }
             }
         }
     }
-
     post {
         always {
-            echo 'Pipeline finished.'
-        }
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed. Check logs above.'
+            // Clean up after build
+            cleanWs()
         }
     }
 }
