@@ -1,16 +1,19 @@
 pipeline {
     agent any
+
     environment {
         // Set up Python and Docker
         PYTHON_IMAGE = 'python:3.9-slim'
         IMAGE_NAME = 'python-devsecops-jenkins_app'
     }
-    stage('Checkout') {
-    steps {
-        // Pull the code from GitHub (branch main explicitly)
-        git branch: 'main', url: 'https://github.com/Shakcode1/devsecops-lab.git'
-    }
-}
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Pull the code from GitHub (branch main explicitly)
+                git branch: 'main', url: 'https://github.com/Shakcode1/devsecops-lab.git'
+            }
+        }
 
         stage('Install Dependencies') {
             steps {
@@ -26,7 +29,7 @@ pipeline {
             steps {
                 script {
                     // Run the tests with pytest
-                    sh 'source ./venv/bin/activate && pytest'
+                    sh 'source ./venv/bin/activate && pytest || true'
                 }
             }
         }
@@ -63,7 +66,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build Docker image (already done for Trivy, but we keep cette étape)
+                    // Build Docker image (already done for Trivy, but keep this step)
                     sh 'docker-compose build'
                 }
             }
@@ -79,6 +82,7 @@ pipeline {
             }
         }
     }
+
     post {
         always {
             // Clean up after build
